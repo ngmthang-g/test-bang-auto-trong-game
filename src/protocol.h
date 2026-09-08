@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <cstdint>
 #include <cstddef>
+#include <cwchar>
 
 namespace autosettings_probe {
 
@@ -61,7 +62,8 @@ struct SharedBlock {
 
 inline void MappingName(DWORD pid, wchar_t* output, std::size_t count) {
     if (!output || count == 0) return;
-    _snwprintf_s(output, count, _TRUNCATE, L"%s%lu", kMappingPrefix, static_cast<unsigned long>(pid));
+    const int written = swprintf_s(output, count, L"%ls%lu", kMappingPrefix, static_cast<unsigned long>(pid));
+    if (written < 0) output[0] = 0;
 }
 
 static_assert(sizeof(Request) == 12, "protocol request layout changed");
