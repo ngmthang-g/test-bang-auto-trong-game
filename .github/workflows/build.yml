@@ -8,26 +8,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: One-shot apply bridge lifecycle fix
-        if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'ci: apply bridge lifecycle fix via build' }}"
-        shell: pwsh
-        run: |
-          python tools/apply_bridge_lifecycle_fix.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/main.cpp src/bridge.cpp
-          git diff --cached --check
-          git commit -m "fix: release bridge mapping cleanly across refresh and detach"
-          git push origin HEAD:feat/auto-settings-probe-v0.2
       - name: Configure x64 Release
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
       - name: Build
