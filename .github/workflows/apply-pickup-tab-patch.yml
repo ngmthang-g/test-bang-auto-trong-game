@@ -2,14 +2,16 @@ name: One-shot pickup tab bridge patch
 
 on:
   push:
-    branches: [ 'feat/auto-settings-probe-v0.2' ]
+    branches:
+      - feat/auto-settings-probe-v0.2
+    paths:
+      - .github/workflows/apply-pickup-tab-patch.yml
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'ci: run one-shot pickup tab bridge patch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +26,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/bridge.cpp
           git diff --cached --check
-          git diff --cached --exit-code && { echo 'No patch produced'; exit 1; } || true
+          if git diff --cached --quiet; then
+            echo "No patch produced"
+            exit 1
+          fi
           git commit -m "feat: auto-select Nhặt đồ tab before pickup probe"
           git push origin HEAD:feat/auto-settings-probe-v0.2
