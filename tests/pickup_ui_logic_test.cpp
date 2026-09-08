@@ -4,6 +4,7 @@
 
 using pickup_ui_logic::Candidate;
 using pickup_ui_logic::SelectionKind;
+using pickup_ui_logic::TabMutationRoute;
 
 int main() {
     int failures = 0;
@@ -95,6 +96,15 @@ int main() {
         const auto item = pickup_ui_logic::SelectPickupToggle(candidates);
         CHECK(item.kind == SelectionKind::None);
     }
+
+    // Match the donor InvokeControl UIToggle route exactly: no-op if already
+    // selected, otherwise prefer set_Selected(true) and only fall back to
+    // HandleSelectEvent(true) when the setter is unavailable.
+    CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(true, false, false, false) == TabMutationRoute::Noop);
+    CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(false, false, true, true) == TabMutationRoute::Blocked);
+    CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(false, true, true, true) == TabMutationRoute::SetSelected);
+    CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(false, true, false, true) == TabMutationRoute::HandleSelectEvent);
+    CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(false, true, false, false) == TabMutationRoute::Blocked);
 
     if (failures != 0) {
         std::cerr << "pickup_ui_logic_tests: " << failures << " failure(s)\n";
