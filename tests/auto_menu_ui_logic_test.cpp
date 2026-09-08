@@ -53,14 +53,39 @@ int main() {
         CHECK(result.index == 1);
     }
 
-    // Regression from live client: two independent active controls can both have
-    // exact label "Thiết lập". The AUTO-menu choice is in the upper region while
-    // the always-visible interface/settings icon is near the bottom. Only when
-    // label matching is ambiguous do we use normalized position as a tie-breaker.
+    // Live-client regression: both controls are literally "Thiết lập", but the
+    // AUTO menu one sits under AutoFightGroup/TopIcon while the always-visible
+    // interface settings icon sits under BottomIcon. Ancestor context should
+    // resolve this without any RectTransform/Screen read.
     {
         std::vector<Candidate> candidates{
-            {L"BtnAutoSetting", L"Thiết lập", L"", L"AutoMenu"},
-            {L"BtnInterfaceSetting", L"Thiết lập", L"", L"MainUI/BottomRight"},
+            {L"Button_-16406", L"Thiết lập", L"", L"Image_-16368/AutoFightGroup/TopIcon/MainUI"},
+            {L"ButSetting", L"Thiết lập", L"", L"IconTab/BottomIcon/MainUI"},
+        };
+        const auto result = auto_menu_ui_logic::SelectSettingsChoiceContext(candidates);
+        CHECK(result.kind == SelectionKind::Unique);
+        CHECK(result.index == 0);
+    }
+
+    // Context tie-breaker must stay fail-closed if two exact-label candidates
+    // both appear to belong to the AUTO/top menu.
+    {
+        std::vector<Candidate> candidates{
+            {L"A", L"Thiết lập", L"", L"AutoFightGroup/TopIcon/MainUI"},
+            {L"B", L"Thiết lập", L"", L"Other/TopIcon/MainUI"},
+        };
+        const auto result = auto_menu_ui_logic::SelectSettingsChoiceContext(candidates);
+        CHECK(result.kind == SelectionKind::Ambiguous);
+        CHECK(result.index == -1);
+    }
+
+    // Regression from live client: two independent active controls can both have
+    // exact label "Thiết lập". Position remains a fallback only when semantic
+    // context cannot uniquely identify the AUTO-menu control.
+    {
+        std::vector<Candidate> candidates{
+            {L"BtnAutoSetting", L"Thiết lập", L"", L"UnknownTopContainer"},
+            {L"BtnInterfaceSetting", L"Thiết lập", L"", L"UnknownBottomContainer"},
         };
         candidates[0].hasNormalizedPosition = true;
         candidates[0].normalizedX = 0.51f;
@@ -74,12 +99,12 @@ int main() {
         CHECK(result.index == 0);
     }
 
-    // If two duplicate labels exist but neither has a proven normalized position,
+    // If two duplicate labels exist but neither context nor position proves one,
     // remain fail-closed rather than guessing.
     {
         std::vector<Candidate> candidates{
-            {L"BtnAutoSetting", L"Thiết lập", L"", L"AutoMenu"},
-            {L"BtnInterfaceSetting", L"Thiết lập", L"", L"MainUI/BottomRight"},
+            {L"BtnAutoSetting", L"Thiết lập", L"", L"UnknownA"},
+            {L"BtnInterfaceSetting", L"Thiết lập", L"", L"UnknownB"},
         };
         const auto result = auto_menu_ui_logic::SelectSettingsChoiceSpatial(candidates, 0.55f);
         CHECK(result.kind == SelectionKind::Ambiguous);
