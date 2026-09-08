@@ -424,7 +424,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     if (!RegisterClassExW(&wc)) return 1;
 
-    g_main = CreateWindowExW(0, kClassName, L"Thần Long - Auto Settings Probe v0.3 Semantic Open",
+    g_main = CreateWindowExW(0, kClassName, L"Thần Long - Auto Settings Probe v0.4 Upper Region",
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 760,
         nullptr, nullptr, instance, nullptr);
     if (!g_main) return 2;
