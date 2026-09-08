@@ -10,6 +10,9 @@ struct Candidate {
     std::wstring text;
     std::wstring descendants;
     std::wstring ancestors;
+    bool hasNormalizedPosition = false;
+    float normalizedX = 0.0f;
+    float normalizedY = 0.0f;
 };
 
 enum class SelectionKind {
@@ -111,6 +114,34 @@ inline Selection SelectHudAuto(const std::vector<Candidate>& candidates) {
 
 inline Selection SelectSettingsChoice(const std::vector<Candidate>& candidates) {
     return SelectByPredicate(candidates, IsSettingsChoice);
+}
+
+// Fast spatial tie-breaker used only when exact semantic label matching is
+// ambiguous. Unity screen coordinates are normalized to [0..1] with Y=0 at
+// the bottom, so an upper-screen menu choice has normalizedY >= upperYMin.
+// If position proof is unavailable or still ambiguous, remain fail-closed.
+inline Selection SelectSettingsChoiceSpatial(const std::vector<Candidate>& candidates,
+                                             float upperYMin = 0.55f) {
+    const Selection semantic = SelectSettingsChoice(candidates);
+    if (semantic.kind != SelectionKind::Ambiguous) return semantic;
+
+    Selection result{};
+    int count = 0;
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+        const Candidate& candidate = candidates[i];
+        if (!IsSettingsChoice(candidate) || !candidate.hasNormalizedPosition) continue;
+        if (candidate.normalizedY < upperYMin) continue;
+        ++count;
+        if (count == 1) {
+            result.kind = SelectionKind::Unique;
+            result.index = static_cast<int>(i);
+        } else {
+            result.kind = SelectionKind::Ambiguous;
+            result.index = -1;
+        }
+    }
+    if (count == 0) return semantic;
+    return result;
 }
 
 inline Selection SelectAutoFightPanelProof(const std::vector<Candidate>& candidates) {
