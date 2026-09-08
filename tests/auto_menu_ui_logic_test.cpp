@@ -9,10 +9,11 @@ int main() {
     int failures = 0;
 #define CHECK(expr) do { if (!(expr)) { std::cerr << "CHECK failed at line " << __LINE__ << ": " #expr "\n"; ++failures; } } while (0)
 
-    // HUD AUTO: exact visible AUTO label, outside the AutoFight settings panel.
+    // HUD AUTO: visible label can be on a descendant Text node, matching the
+    // actual UIObject.instances diagnostics used elsewhere in this tool.
     {
         std::vector<Candidate> candidates{
-            {L"BtnAuto", L"AUTO", L"", L"MainUI/RightHud"},
+            {L"BtnAuto", L"", L"Text_-101/AUTO/Image_-102", L"MainUI/RightHud"},
             {L"BtnOther", L"PK", L"", L"MainUI/RightHud"},
         };
         const auto result = auto_menu_ui_logic::SelectHudAuto(candidates);
@@ -40,11 +41,11 @@ int main() {
         CHECK(result.kind == SelectionKind::None);
     }
 
-    // Small AUTO menu: exact Thiết lập row, still outside AutoFightUI.
+    // Small AUTO menu: Thiết lập can also live on a descendant Text node.
     {
         std::vector<Candidate> candidates{
             {L"BtnQuest", L"Nhiệm vụ", L"", L"AutoMenu"},
-            {L"BtnSetting", L"Thiết lập", L"", L"AutoMenu"},
+            {L"BtnSetting", L"", L"Text_-201/Thiết lập/Image_-202", L"AutoMenu"},
             {L"BtnStop", L"Dừng", L"", L"AutoMenu"},
         };
         const auto result = auto_menu_ui_logic::SelectSettingsChoice(candidates);
