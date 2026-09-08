@@ -1,0 +1,29 @@
+name: One-shot bridge lifecycle fix
+
+on:
+  push:
+    branches: [ 'feat/auto-settings-probe-v0.2' ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'ci: apply bridge lifecycle fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/auto-settings-probe-v0.2
+          fetch-depth: 0
+      - name: Apply verified lifecycle patch
+        run: python tools/apply_bridge_lifecycle_fix.py
+      - name: Commit bridge lifecycle fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main.cpp src/bridge.cpp
+          git diff --cached --check
+          git diff --cached --exit-code && { echo 'No patch produced'; exit 1; } || true
+          git commit -m "fix: release bridge mapping cleanly across refresh and detach"
+          git push origin HEAD:feat/auto-settings-probe-v0.2
