@@ -65,6 +65,17 @@ inline bool HasVietnamesePickupTabLabel(const std::wstring& value) {
            value.find(L"nhặt đồ") != std::wstring::npos;
 }
 
+inline bool HasVietnameseSaveSettingsLabel(const std::wstring& value) {
+    return value.find(L"Lưu thiết lập") != std::wstring::npos ||
+           value.find(L"lưu thiết lập") != std::wstring::npos;
+}
+
+inline bool HasSaveSettingsInternalToken(const std::wstring& value) {
+    const std::wstring key = CompactAsciiKey(value);
+    return key.find(L"savesettings") != std::wstring::npos ||
+           (key.find(L"save") != std::wstring::npos && key.find(L"setting") != std::wstring::npos);
+}
+
 inline bool HasAutoFightContext(const Candidate& candidate) {
     return CompactAsciiKey(candidate.ancestors).find(L"autofight") != std::wstring::npos;
 }
@@ -159,6 +170,38 @@ inline Selection SelectPickupTab(const std::vector<Candidate>& candidates) {
     return result;
 }
 
+inline int ScoreSaveSettingsButtonCandidate(const Candidate& candidate) {
+    if (!HasAutoFightContext(candidate)) return 0;
+    int score = 0;
+    if (HasVietnameseSaveSettingsLabel(candidate.text)) score += 180;
+    if (HasVietnameseSaveSettingsLabel(candidate.descendants)) score += 160;
+    if (HasSaveSettingsInternalToken(candidate.name)) score += 120;
+    if (HasSaveSettingsInternalToken(candidate.text)) score += 80;
+    if (HasSaveSettingsInternalToken(candidate.descendants)) score += 60;
+    return score;
+}
+
+inline Selection SelectSaveSettingsButton(const std::vector<Candidate>& candidates) {
+    Selection result{};
+    int positiveCount = 0;
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+        const int score = ScoreSaveSettingsButtonCandidate(candidates[i]);
+        if (score <= 0) continue;
+        ++positiveCount;
+        if (positiveCount == 1) {
+            result.kind = SelectionKind::Unique;
+            result.index = static_cast<int>(i);
+            result.score = score;
+        } else {
+            result.kind = SelectionKind::Ambiguous;
+            result.index = -1;
+            if (score > result.score) result.score = score;
+        }
+    }
+    if (positiveCount == 0) result = {};
+    return result;
+}
+
 inline TabMutationRoute ChoosePickupTabMutationRoute(bool selected,
                                                       bool interactable,
                                                       bool hasSetSelected,
@@ -168,6 +211,13 @@ inline TabMutationRoute ChoosePickupTabMutationRoute(bool selected,
     if (hasSetSelected) return TabMutationRoute::SetSelected;
     if (hasSelectEvent) return TabMutationRoute::HandleSelectEvent;
     return TabMutationRoute::Blocked;
+}
+
+inline TabMutationRoute ChoosePickupItemMutationRoute(bool selected,
+                                                       bool interactable,
+                                                       bool hasSetSelected,
+                                                       bool hasSelectEvent) {
+    return ChoosePickupTabMutationRoute(selected, interactable, hasSetSelected, hasSelectEvent);
 }
 
 } // namespace pickup_ui_logic
