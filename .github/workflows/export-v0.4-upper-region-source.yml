@@ -1,0 +1,26 @@
+name: Export v0.4 Upper Region Source
+
+on:
+  push:
+    branches: [ 'ci/export-v0.4-upper-region-source' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export exact feature source
+        run: |
+          git archive --format=zip --output=ThanLongAutoSettingsProbe-v0.4-upper-region-source.zip a8f6c21a929b67800a251716e74999c26325a6c3
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThanLongAutoSettingsProbe-v0.4-upper-region-source
+          path: ThanLongAutoSettingsProbe-v0.4-upper-region-source.zip
+          if-no-files-found: error
