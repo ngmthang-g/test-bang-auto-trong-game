@@ -14,7 +14,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 enable_testing()
 
-add_library(ThanLongAutoSettingsBridge SHARED src/bridge.cpp)
+add_library(ThanLongAutoSettingsBridge SHARED src/bridge.cpp src/auto_settings_parser.cpp)
 target_include_directories(ThanLongAutoSettingsBridge PRIVATE src)
 target_compile_definitions(ThanLongAutoSettingsBridge PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(ThanLongAutoSettingsBridge PRIVATE user32 kernel32)
