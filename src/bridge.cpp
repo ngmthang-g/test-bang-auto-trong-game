@@ -1,7 +1,11 @@
 #include <windows.h>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
+#include <vector>
+#include "pickup_ui_logic.h"
 #include "protocol.h"
 
 using namespace autosettings_probe;
@@ -44,6 +48,19 @@ void SetText(wchar_t* out, std::size_t cap, const wchar_t* text) {
     wcsncpy_s(out, cap, text, _TRUNCATE);
 }
 
+void AppendText(wchar_t* out, std::size_t cap, const wchar_t* text) {
+    if (!out || !text || cap == 0) return;
+    const std::size_t used = wcsnlen_s(out, cap);
+    if (used >= cap - 1) return;
+    wcsncat_s(out, cap, text, _TRUNCATE);
+}
+
+void AppendInt(wchar_t* out, std::size_t cap, int value) {
+    wchar_t buffer[32]{};
+    swprintf_s(buffer, _countof(buffer), L"%d", value);
+    AppendText(out, cap, buffer);
+}
+
 struct Api {
     HMODULE module = nullptr;
     Il2CppDomain* (__cdecl* domain_get)() = nullptr;
@@ -52,18 +69,28 @@ struct Api {
     Il2CppClass* (__cdecl* class_from_name)(const Il2CppImage*, const char*, const char*) = nullptr;
     const MethodInfo* (__cdecl* class_get_method_from_name)(Il2CppClass*, const char*, int) = nullptr;
     Il2CppClass* (__cdecl* class_get_parent)(Il2CppClass*) = nullptr;
+    std::uint32_t (__cdecl* method_get_flags)(const MethodInfo*, std::uint32_t*) = nullptr;
+    std::uint32_t (__cdecl* method_get_param_count)(const MethodInfo*) = nullptr;
+    const Il2CppType* (__cdecl* method_get_param)(const MethodInfo*, std::uint32_t) = nullptr;
     const Il2CppType* (__cdecl* method_get_return_type)(const MethodInfo*) = nullptr;
     char* (__cdecl* type_get_name)(const Il2CppType*) = nullptr;
     void (__cdecl* free_fn)(void*) = nullptr;
     Il2CppObject* (__cdecl* runtime_invoke)(const MethodInfo*, void*, void**, void**) = nullptr;
+    void* (__cdecl* object_unbox)(Il2CppObject*) = nullptr;
     Il2CppClass* (__cdecl* object_get_class)(Il2CppObject*) = nullptr;
     FieldInfo* (__cdecl* class_get_field_from_name)(Il2CppClass*, const char*) = nullptr;
     const Il2CppType* (__cdecl* field_get_type)(FieldInfo*) = nullptr;
     void (__cdecl* field_get_value)(Il2CppObject*, FieldInfo*, void*) = nullptr;
+    void (__cdecl* field_static_get_value)(FieldInfo*, void*) = nullptr;
     Il2CppClass* (__cdecl* class_from_type)(const Il2CppType*) = nullptr;
     bool (__cdecl* class_is_valuetype)(const Il2CppClass*) = nullptr;
+    bool (__cdecl* class_is_assignable_from)(Il2CppClass*, Il2CppClass*) = nullptr;
     std::int32_t (__cdecl* string_length)(Il2CppString*) = nullptr;
     const wchar_t* (__cdecl* string_chars)(Il2CppString*) = nullptr;
+    std::size_t (__cdecl* image_get_class_count)(const Il2CppImage*) = nullptr;
+    Il2CppClass* (__cdecl* image_get_class)(const Il2CppImage*, std::size_t) = nullptr;
+    const char* (__cdecl* class_get_name)(Il2CppClass*) = nullptr;
+    bool uiDiscoveryLoaded = false;
 
     bool Load(wchar_t* detail, std::size_t cap) {
         if (module) return true;
@@ -76,9 +103,13 @@ struct Api {
         NEED(class_from_name);
         NEED(class_get_method_from_name);
         NEED(class_get_parent);
+        NEED(method_get_flags);
+        NEED(method_get_param_count);
+        NEED(method_get_param);
         NEED(method_get_return_type);
         NEED(type_get_name);
         NEED(runtime_invoke);
+        NEED(object_unbox);
         NEED(object_get_class);
         NEED(class_get_field_from_name);
         NEED(field_get_type);
@@ -94,6 +125,21 @@ struct Api {
         }
         return true;
     }
+
+    bool LoadUiDiscovery(wchar_t* detail, std::size_t cap) {
+        if (!Load(detail, cap)) return false;
+        if (uiDiscoveryLoaded) return true;
+        if (!Resolve(module, "il2cpp_class_is_assignable_from", class_is_assignable_from) ||
+            !Resolve(module, "il2cpp_field_static_get_value", field_static_get_value)) {
+            SetText(detail, cap, L"Thiếu IL2CPP export cần cho UIObject.instances");
+            return false;
+        }
+        (void)Resolve(module, "il2cpp_image_get_class_count", image_get_class_count);
+        (void)Resolve(module, "il2cpp_image_get_class", image_get_class);
+        (void)Resolve(module, "il2cpp_class_get_name", class_get_name);
+        uiDiscoveryLoaded = true;
+        return true;
+    }
 };
 
 Api g_api;
@@ -104,6 +150,13 @@ const Il2CppImage* AssemblyCSharp() {
     const Il2CppAssembly* assembly = g_api.domain_assembly_open(domain, "Assembly-CSharp");
     if (!assembly) assembly = g_api.domain_assembly_open(domain, "Assembly-CSharp.dll");
     return assembly ? g_api.assembly_get_image(assembly) : nullptr;
+}
+
+bool StaticMethod(const MethodInfo* method) {
+    if (!method || !g_api.method_get_flags) return false;
+    constexpr std::uint32_t StaticFlag = 0x0010;
+    std::uint32_t implFlags = 0;
+    return (g_api.method_get_flags(method, &implFlags) & StaticFlag) != 0;
 }
 
 const MethodInfo* FindMethod(Il2CppClass* klass, const char* name, int argc) {
@@ -120,6 +173,24 @@ FieldInfo* FindField(Il2CppClass* klass, const char* name) {
     return nullptr;
 }
 
+bool ParamType(const MethodInfo* method, std::uint32_t index, const char* expected) {
+    if (!method || !expected || index >= g_api.method_get_param_count(method)) return false;
+    const Il2CppType* type = g_api.method_get_param(method, index);
+    char* name = type ? g_api.type_get_name(type) : nullptr;
+    if (!name) return false;
+    const bool ok = Eq(name, expected);
+    g_api.free_fn(name);
+    return ok;
+}
+
+const MethodInfo* ExactMethod(Il2CppClass* klass, const char* name, int argc, bool isStatic,
+                              const char* p0 = nullptr) {
+    const MethodInfo* method = FindMethod(klass, name, argc);
+    if (!method || StaticMethod(method) != isStatic) return nullptr;
+    if (argc > 0 && p0 && !ParamType(method, 0, p0)) return nullptr;
+    return method;
+}
+
 bool TypeIsString(const Il2CppType* type) {
     if (!type) return false;
     char* name = g_api.type_get_name(type);
@@ -129,11 +200,40 @@ bool TypeIsString(const Il2CppType* type) {
     return ok;
 }
 
-bool InvokeObject(const MethodInfo* method, void* instance, Il2CppObject*& out) {
+bool InvokeObjectArgs(const MethodInfo* method, void* instance, void** args, Il2CppObject*& out) {
     out = nullptr;
     if (!method) return false;
     void* exc = nullptr;
-    out = g_api.runtime_invoke(method, instance, nullptr, &exc);
+    out = g_api.runtime_invoke(method, instance, args, &exc);
+    return exc == nullptr;
+}
+
+bool InvokeObject(const MethodInfo* method, void* instance, Il2CppObject*& out) {
+    return InvokeObjectArgs(method, instance, nullptr, out);
+}
+
+bool InvokeBool(const MethodInfo* method, void* instance, bool& out) {
+    out = false;
+    if (!method) return false;
+    void* exc = nullptr;
+    Il2CppObject* boxed = g_api.runtime_invoke(method, instance, nullptr, &exc);
+    if (exc || !boxed) return false;
+    const Il2CppType* type = g_api.method_get_return_type(method);
+    char* name = type ? g_api.type_get_name(type) : nullptr;
+    if (!name) return false;
+    const bool typeOk = Eq(name, "System.Boolean");
+    g_api.free_fn(name);
+    if (!typeOk) return false;
+    void* raw = g_api.object_unbox(boxed);
+    if (!raw) return false;
+    out = *reinterpret_cast<const std::uint8_t*>(raw) != 0;
+    return true;
+}
+
+bool InvokeVoid(const MethodInfo* method, void* instance, void** args) {
+    if (!method) return false;
+    void* exc = nullptr;
+    (void)g_api.runtime_invoke(method, instance, args, &exc);
     return exc == nullptr;
 }
 
@@ -158,13 +258,23 @@ bool CopyManagedString(Il2CppString* value, wchar_t* out, std::size_t cap,
     return true;
 }
 
+bool CopyManagedString(Il2CppString* value, std::wstring& out) {
+    out.clear();
+    if (!value) return false;
+    const int len = g_api.string_length(value);
+    const wchar_t* chars = g_api.string_chars(value);
+    if (len < 0 || len > 4096 || !chars) return false;
+    out.assign(chars, chars + len);
+    return true;
+}
+
 bool TryStringGetter(Il2CppObject* object, Il2CppClass* klass, const char* getter,
                      Il2CppString*& out) {
     out = nullptr;
-    const MethodInfo* m = FindMethod(klass, getter, 0);
-    if (!m || !TypeIsString(g_api.method_get_return_type(m))) return false;
+    const MethodInfo* method = FindMethod(klass, getter, 0);
+    if (!method || !TypeIsString(g_api.method_get_return_type(method))) return false;
     Il2CppObject* value = nullptr;
-    if (!InvokeObject(m, object, value) || !value) return false;
+    if (!InvokeObject(method, object, value) || !value) return false;
     out = reinterpret_cast<Il2CppString*>(value);
     return true;
 }
@@ -179,6 +289,18 @@ bool TryStringField(Il2CppObject* object, Il2CppClass* klass, const char* fieldN
     if (!value) return false;
     out = value;
     return true;
+}
+
+bool ReadStringMember(Il2CppObject* object, Il2CppClass* klass, const char* member,
+                      std::wstring& out) {
+    out.clear();
+    std::string getter = std::string("get_") + member;
+    Il2CppString* value = nullptr;
+    if (TryStringGetter(object, klass, getter.c_str(), value) ||
+        TryStringField(object, klass, member, value)) {
+        return CopyManagedString(value, out);
+    }
+    return false;
 }
 
 bool RoleDataBacking(Il2CppObject* leader, Il2CppClass* leaderClass,
@@ -205,7 +327,7 @@ bool GetLeader(Il2CppObject*& leader, Il2CppClass*& leaderClass,
     if (!image) { SetText(detail, cap, L"Không mở được Assembly-CSharp"); return false; }
     Il2CppClass* shared = g_api.class_from_name(image, "FGStudio.LuaSystem", "LuaSystemSharedData");
     if (!shared) { SetText(detail, cap, L"Không resolve LuaSystemSharedData"); return false; }
-    const MethodInfo* getter = FindMethod(shared, "get_LeaderRoleData", 0);
+    const MethodInfo* getter = ExactMethod(shared, "get_LeaderRoleData", 0, true);
     if (!getter || !InvokeObject(getter, nullptr, leader) || !leader) {
         SetText(detail, cap, L"LeaderRoleData chưa sẵn sàng");
         return false;
@@ -263,6 +385,344 @@ bool ReadAutoSettings(wchar_t* out, std::size_t outCap, wchar_t* detail, std::si
     return true;
 }
 
+template <typename T>
+bool ReadLocal(const void* base, std::size_t offset, T& value) {
+    if (!base) return false;
+    SIZE_T done = 0;
+    const auto* address = reinterpret_cast<const unsigned char*>(base) + offset;
+    return ReadProcessMemory(GetCurrentProcess(), address, &value, sizeof(value), &done) != FALSE && done == sizeof(value);
+}
+
+bool IsUiObjectClass(Il2CppClass* klass) {
+    return klass && FindField(klass, "instances");
+}
+
+bool IsToggleClass(Il2CppClass* klass) {
+    return klass &&
+           ExactMethod(klass, "get_Selected", 0, false) &&
+           (ExactMethod(klass, "HandleSelectEvent", 1, false, "System.Boolean") ||
+            ExactMethod(klass, "set_Selected", 1, false, "System.Boolean"));
+}
+
+struct UiRuntime {
+    bool ready = false;
+    const Il2CppImage* image = nullptr;
+    Il2CppClass* uiObject = nullptr;
+    Il2CppClass* toggle = nullptr;
+    FieldInfo* instances = nullptr;
+};
+
+UiRuntime g_ui;
+
+void FindUiClassesByMetadata() {
+    if (!g_ui.image || !g_api.image_get_class_count || !g_api.image_get_class || !g_api.class_get_name) return;
+    const std::size_t count = g_api.image_get_class_count(g_ui.image);
+    if (count == 0 || count > 65536) return;
+    for (std::size_t i = 0; i < count; ++i) {
+        Il2CppClass* klass = g_api.image_get_class(g_ui.image, i);
+        const char* name = klass ? g_api.class_get_name(klass) : nullptr;
+        if (!name) continue;
+        if (!g_ui.uiObject && Eq(name, "UIObject") && IsUiObjectClass(klass)) g_ui.uiObject = klass;
+        if (!g_ui.toggle && Eq(name, "UIToggle") && IsToggleClass(klass)) g_ui.toggle = klass;
+        if (g_ui.uiObject && g_ui.toggle) return;
+    }
+}
+
+bool EnsureUiDiscovery(wchar_t* detail, std::size_t cap) {
+    if (g_ui.ready) return true;
+    if (!g_api.LoadUiDiscovery(detail, cap)) return false;
+    g_ui.image = AssemblyCSharp();
+    if (!g_ui.image) { SetText(detail, cap, L"UI discovery: không mở được Assembly-CSharp"); return false; }
+    g_ui.uiObject = g_api.class_from_name(g_ui.image, "FGStudio.LuaSystem.Base", "UIObject");
+    g_ui.toggle = g_api.class_from_name(g_ui.image, "FGStudio.LuaSystem.GUI", "UIToggle");
+    if (g_ui.uiObject && !IsUiObjectClass(g_ui.uiObject)) g_ui.uiObject = nullptr;
+    if (g_ui.toggle && !IsToggleClass(g_ui.toggle)) g_ui.toggle = nullptr;
+    FindUiClassesByMetadata();
+    g_ui.instances = g_ui.uiObject ? FindField(g_ui.uiObject, "instances") : nullptr;
+    if (!g_ui.uiObject || !g_ui.toggle || !g_ui.instances) {
+        SetText(detail, cap, L"Không resolve đủ UIObject.instances/UIToggle đã validate");
+        return false;
+    }
+    g_ui.ready = true;
+    return true;
+}
+
+bool ReadManagedPointerArray(Il2CppObject* array, std::vector<Il2CppObject*>& values, std::size_t hardLimit) {
+    values.clear();
+    std::uintptr_t length = 0;
+    if (!array || !ReadLocal(array, 0x18, length) || length > hardLimit) return false;
+    values.reserve(static_cast<std::size_t>(length));
+    for (std::uintptr_t i = 0; i < length; ++i) {
+        Il2CppObject* value = nullptr;
+        if (!ReadLocal(array, 0x20 + static_cast<std::size_t>(i) * sizeof(void*), value)) return false;
+        if (value) values.push_back(value);
+    }
+    return true;
+}
+
+bool ObjectGetter(Il2CppObject* object, Il2CppClass* klass, const char* getter, Il2CppObject*& out) {
+    out = nullptr;
+    const MethodInfo* method = FindMethod(klass, getter, 0);
+    return method && InvokeObject(method, object, out);
+}
+
+void AppendLabel(std::wstring& target, const std::wstring& value) {
+    if (value.empty()) return;
+    if (target.find(value) != std::wstring::npos) return;
+    if (!target.empty()) target += L"/";
+    target += value;
+}
+
+void CollectDescendantLabels(Il2CppObject* root, std::wstring& labels) {
+    labels.clear();
+    std::vector<Il2CppObject*> pending{root};
+    std::vector<Il2CppObject*> visited;
+    while (!pending.empty() && visited.size() < 96) {
+        Il2CppObject* current = pending.back();
+        pending.pop_back();
+        if (!current || std::find(visited.begin(), visited.end(), current) != visited.end()) continue;
+        visited.push_back(current);
+        Il2CppClass* klass = g_api.object_get_class(current);
+        if (!klass) continue;
+        if (current != root) {
+            std::wstring value;
+            if (ReadStringMember(current, klass, "Name", value)) AppendLabel(labels, value);
+            if (ReadStringMember(current, klass, "Text", value)) AppendLabel(labels, value);
+        }
+        Il2CppObject* children = nullptr;
+        if (!ObjectGetter(current, klass, "get_CoreChildren", children) || !children)
+            (void)ObjectGetter(current, klass, "get_Children", children);
+        if (!children) continue;
+        std::vector<Il2CppObject*> childValues;
+        if (!ReadManagedPointerArray(children, childValues, 128)) continue;
+        for (Il2CppObject* child : childValues) pending.push_back(child);
+    }
+}
+
+void CollectAncestorLabels(Il2CppObject* root, std::wstring& labels) {
+    labels.clear();
+    Il2CppObject* current = root;
+    std::vector<Il2CppObject*> seen;
+    for (int depth = 0; depth < 14 && current; ++depth) {
+        if (std::find(seen.begin(), seen.end(), current) != seen.end()) break;
+        seen.push_back(current);
+        Il2CppClass* klass = g_api.object_get_class(current);
+        if (!klass) break;
+        Il2CppObject* parent = nullptr;
+        if (!ObjectGetter(current, klass, "get_Parent", parent) || !parent) break;
+        Il2CppClass* parentClass = g_api.object_get_class(parent);
+        if (!parentClass) break;
+        std::wstring name;
+        if (ReadStringMember(parent, parentClass, "Name", name)) AppendLabel(labels, name);
+        current = parent;
+    }
+}
+
+struct RuntimeToggle {
+    Il2CppObject* object = nullptr;
+    Il2CppClass* klass = nullptr;
+    pickup_ui_logic::Candidate candidate{};
+    bool interactable = false;
+    bool hasSelectHandler = false;
+};
+
+bool ReadToggleBool(Il2CppObject* object, Il2CppClass* klass, const char* getter, bool& value) {
+    const MethodInfo* method = ExactMethod(klass, getter, 0, false);
+    return method && InvokeBool(method, object, value);
+}
+
+bool EnumerateActiveToggles(std::vector<RuntimeToggle>& toggles, wchar_t* detail, std::size_t cap) {
+    toggles.clear();
+    if (!EnsureUiDiscovery(detail, cap)) return false;
+    Il2CppObject* dictionary = nullptr;
+    g_api.field_static_get_value(g_ui.instances, &dictionary);
+    Il2CppObject* entries = nullptr;
+    std::int32_t count = 0;
+    std::uintptr_t capacity = 0;
+    if (!dictionary || !ReadLocal(dictionary, 0x18, entries) || !entries ||
+        !ReadLocal(dictionary, 0x20, count) || count < 0 || count > 32768 ||
+        !ReadLocal(entries, 0x18, capacity) || capacity > 32768) {
+        SetText(detail, cap, L"UIObject.instances dictionary không hợp lệ");
+        return false;
+    }
+
+    for (std::uintptr_t i = 0; i < capacity; ++i) {
+        Il2CppObject* object = nullptr;
+        const std::size_t entry = 0x20 + static_cast<std::size_t>(i) * 0x18;
+        if (!ReadLocal(entries, entry + 0x10, object) || !object) continue;
+        Il2CppClass* klass = g_api.object_get_class(object);
+        if (!klass || !g_api.class_is_assignable_from(g_ui.toggle, klass)) continue;
+
+        bool active = false;
+        if (!ReadToggleBool(object, klass, "get_ActiveInHierarchy", active) || !active) continue;
+        bool interactable = false;
+        if (!ReadToggleBool(object, klass, "get_Interactable", interactable)) interactable = false;
+        bool selected = false;
+        if (!ReadToggleBool(object, klass, "get_Selected", selected)) continue;
+
+        RuntimeToggle row{};
+        row.object = object;
+        row.klass = klass;
+        row.interactable = interactable;
+        row.hasSelectHandler = ExactMethod(klass, "HandleSelectEvent", 1, false, "System.Boolean") != nullptr;
+        row.candidate.selected = selected ? 1 : 0;
+        (void)ReadStringMember(object, klass, "Name", row.candidate.name);
+        (void)ReadStringMember(object, klass, "Text", row.candidate.text);
+        CollectDescendantLabels(object, row.candidate.descendants);
+        CollectAncestorLabels(object, row.candidate.ancestors);
+        toggles.push_back(std::move(row));
+    }
+    return true;
+}
+
+void AppendToggleDiagnostic(wchar_t* detail, std::size_t cap, const RuntimeToggle& toggle) {
+    AppendText(detail, cap, L" [N=");
+    AppendText(detail, cap, toggle.candidate.name.c_str());
+    AppendText(detail, cap, L" T=");
+    AppendText(detail, cap, toggle.candidate.text.c_str());
+    AppendText(detail, cap, L" D=");
+    AppendText(detail, cap, toggle.candidate.descendants.c_str());
+    AppendText(detail, cap, L" A=");
+    AppendText(detail, cap, toggle.candidate.ancestors.c_str());
+    AppendText(detail, cap, L" S=");
+    AppendInt(detail, cap, toggle.candidate.selected);
+    AppendText(detail, cap, L"]");
+}
+
+bool SelectRuntimePickup(std::vector<RuntimeToggle>& toggles, int& selectedIndex,
+                         pickup_ui_logic::SelectionKind& kind, wchar_t* detail, std::size_t cap) {
+    selectedIndex = -1;
+    kind = pickup_ui_logic::SelectionKind::None;
+    if (!EnumerateActiveToggles(toggles, detail, cap)) return false;
+    std::vector<pickup_ui_logic::Candidate> candidates;
+    candidates.reserve(toggles.size());
+    for (const auto& toggle : toggles) candidates.push_back(toggle.candidate);
+    const auto selection = pickup_ui_logic::SelectPickupToggle(candidates);
+    kind = selection.kind;
+    selectedIndex = selection.index;
+    return true;
+}
+
+void PopulatePersistedSnapshot(Response& response) {
+    ResultCode ignoredCode = ResultCode::None;
+    wchar_t ignoredDetail[160]{};
+    (void)ReadAutoSettings(response.autoSettings, kAutoSettingsCapacity,
+                           ignoredDetail, _countof(ignoredDetail), ignoredCode);
+}
+
+bool ProbePickupRuntime(Response& response, wchar_t* detail, std::size_t cap) {
+    PopulatePersistedSnapshot(response);
+    std::vector<RuntimeToggle> toggles;
+    int index = -1;
+    pickup_ui_logic::SelectionKind kind{};
+    if (!SelectRuntimePickup(toggles, index, kind, detail, cap)) return false;
+
+    response.ok = 1;
+    response.runtimePickupState = -1;
+    response.mutationAvailable = 0;
+    response.resultCode = static_cast<std::int32_t>(ResultCode::RuntimeUnknown);
+
+    if (kind == pickup_ui_logic::SelectionKind::None) {
+        SetText(detail, cap, L"Không tìm thấy UIToggle Nhặt vật phẩm duy nhất. Hãy mở bảng AUTO/tab Nhặt đồ. Active toggles=");
+        AppendInt(detail, cap, static_cast<int>(toggles.size()));
+        const std::size_t show = std::min<std::size_t>(toggles.size(), 4);
+        for (std::size_t i = 0; i < show; ++i) AppendToggleDiagnostic(detail, cap, toggles[i]);
+        return true;
+    }
+    if (kind == pickup_ui_logic::SelectionKind::Ambiguous || index < 0 ||
+        static_cast<std::size_t>(index) >= toggles.size()) {
+        SetText(detail, cap, L"Có nhiều UIToggle giống Nhặt vật phẩm; fail-closed.");
+        for (const auto& toggle : toggles) {
+            if (pickup_ui_logic::ScorePickupCandidate(toggle.candidate) > 0) AppendToggleDiagnostic(detail, cap, toggle);
+        }
+        return true;
+    }
+
+    RuntimeToggle& toggle = toggles[static_cast<std::size_t>(index)];
+    response.runtimePickupState = toggle.candidate.selected;
+    response.mutationAvailable = (toggle.interactable && toggle.hasSelectHandler) ? 1 : 0;
+    response.resultCode = static_cast<std::int32_t>(ResultCode::Ok);
+    SetText(detail, cap, L"UIToggle Nhặt vật phẩm UNIQUE; runtime=");
+    AppendInt(detail, cap, response.runtimePickupState);
+    AppendText(detail, cap, L" interactable=");
+    AppendInt(detail, cap, toggle.interactable ? 1 : 0);
+    AppendText(detail, cap, L" HandleSelectEvent=");
+    AppendInt(detail, cap, toggle.hasSelectHandler ? 1 : 0);
+    AppendToggleDiagnostic(detail, cap, toggle);
+    return true;
+}
+
+bool EnsurePickupOn(Response& response, wchar_t* detail, std::size_t cap) {
+    PopulatePersistedSnapshot(response);
+    std::vector<RuntimeToggle> toggles;
+    int index = -1;
+    pickup_ui_logic::SelectionKind kind{};
+    if (!SelectRuntimePickup(toggles, index, kind, detail, cap)) return false;
+    response.runtimePickupState = -1;
+    response.mutationAvailable = 0;
+
+    if (kind != pickup_ui_logic::SelectionKind::Unique || index < 0 ||
+        static_cast<std::size_t>(index) >= toggles.size()) {
+        response.ok = 0;
+        response.resultCode = static_cast<std::int32_t>(ResultCode::MutationBlocked);
+        SetText(detail, cap, kind == pickup_ui_logic::SelectionKind::Ambiguous
+            ? L"BLOCKED: UIToggle Nhặt vật phẩm mơ hồ; không ghi"
+            : L"BLOCKED: chưa tìm thấy UIToggle Nhặt vật phẩm; mở bảng AUTO/tab Nhặt đồ rồi probe lại");
+        return true;
+    }
+
+    RuntimeToggle& toggle = toggles[static_cast<std::size_t>(index)];
+    bool selected = toggle.candidate.selected == 1;
+    response.runtimePickupState = selected ? 1 : 0;
+    response.mutationAvailable = (toggle.interactable && toggle.hasSelectHandler) ? 1 : 0;
+
+    if (selected) {
+        response.ok = 1;
+        response.resultCode = static_cast<std::int32_t>(ResultCode::Ok);
+        SetText(detail, cap, L"Nhặt vật phẩm đã ON; no-op, read-back=ON");
+        PopulatePersistedSnapshot(response);
+        return true;
+    }
+
+    if (!toggle.interactable || !toggle.hasSelectHandler) {
+        response.ok = 0;
+        response.resultCode = static_cast<std::int32_t>(ResultCode::MutationBlocked);
+        response.mutationAvailable = 0;
+        SetText(detail, cap, L"BLOCKED: toggle đọc được nhưng không có route HandleSelectEvent(bool) interactable đã chứng minh");
+        return true;
+    }
+
+    const MethodInfo* selectEvent = ExactMethod(toggle.klass, "HandleSelectEvent", 1, false, "System.Boolean");
+    std::uint8_t yes = 1;
+    void* args[] = {&yes};
+    if (!selectEvent || !InvokeVoid(selectEvent, toggle.object, args)) {
+        response.ok = 0;
+        response.resultCode = static_cast<std::int32_t>(ResultCode::MutationBlocked);
+        response.mutationAvailable = 0;
+        SetText(detail, cap, L"BLOCKED: HandleSelectEvent(true) ném lỗi/không invoke được");
+        return true;
+    }
+
+    bool readBack = false;
+    if (!ReadToggleBool(toggle.object, toggle.klass, "get_Selected", readBack) || !readBack) {
+        response.ok = 0;
+        response.resultCode = static_cast<std::int32_t>(ResultCode::MutationBlocked);
+        response.runtimePickupState = readBack ? 1 : 0;
+        response.mutationAvailable = 0;
+        SetText(detail, cap, L"BLOCKED: đã dispatch HandleSelectEvent(true) nhưng runtime read-back chưa ON; không thử ghi lần hai");
+        PopulatePersistedSnapshot(response);
+        return true;
+    }
+
+    response.ok = 1;
+    response.resultCode = static_cast<std::int32_t>(ResultCode::Ok);
+    response.runtimePickupState = 1;
+    response.mutationAvailable = 1;
+    PopulatePersistedSnapshot(response);
+    SetText(detail, cap, L"ENSURE PASS: HandleSelectEvent(true) + get_Selected read-back=ON; AutoSettings đã re-read để đối chiếu");
+    return true;
+}
+
 bool EnsureMapping() {
     if (g_shared) return true;
     wchar_t name[128]{};
@@ -308,21 +768,23 @@ void ProcessRequest() {
         g_shared->response.ok = ok ? 1 : 0;
         g_shared->response.resultCode = static_cast<std::int32_t>(code);
     } else if (command == Command::ProbePickupRuntime) {
-        (void)ReadAutoSettings(g_shared->response.autoSettings, kAutoSettingsCapacity,
-                               g_shared->response.detail, kDetailCapacity, code);
-        g_shared->response.ok = 1;
-        g_shared->response.resultCode = static_cast<std::int32_t>(ResultCode::RuntimeUnknown);
-        g_shared->response.runtimePickupState = -1;
-        g_shared->response.mutationAvailable = 0;
-        SetText(g_shared->response.detail, kDetailCapacity,
-                L"Runtime pickup chưa có nguồn độc lập được chứng minh; persisted AutoSettings không được dùng làm proof");
+        const bool transportOk = ProbePickupRuntime(g_shared->response,
+                                                    g_shared->response.detail, kDetailCapacity);
+        if (!transportOk) {
+            g_shared->response.ok = 0;
+            g_shared->response.resultCode = static_cast<std::int32_t>(ResultCode::RuntimeUnknown);
+            g_shared->response.runtimePickupState = -1;
+            g_shared->response.mutationAvailable = 0;
+        }
     } else if (command == Command::EnsurePickupOn) {
-        g_shared->response.ok = 0;
-        g_shared->response.resultCode = static_cast<std::int32_t>(ResultCode::MutationBlocked);
-        g_shared->response.runtimePickupState = -1;
-        g_shared->response.mutationAvailable = 0;
-        SetText(g_shared->response.detail, kDetailCapacity,
-                L"BLOCKED: chưa có runtime read-back độc lập nên v0.1 không ghi/toggle Nhặt vật phẩm");
+        const bool transportOk = EnsurePickupOn(g_shared->response,
+                                                g_shared->response.detail, kDetailCapacity);
+        if (!transportOk) {
+            g_shared->response.ok = 0;
+            g_shared->response.resultCode = static_cast<std::int32_t>(ResultCode::MutationBlocked);
+            g_shared->response.runtimePickupState = -1;
+            g_shared->response.mutationAvailable = 0;
+        }
     } else {
         g_shared->response.ok = 0;
         g_shared->response.resultCode = static_cast<std::int32_t>(ResultCode::ProtocolMismatch);
