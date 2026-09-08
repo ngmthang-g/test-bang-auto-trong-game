@@ -104,6 +104,12 @@ inline bool IsSettingsChoice(const Candidate& candidate) {
     return ExactLabel(candidate, L"thietlap");
 }
 
+inline bool IsAutoFightMenuSettingsContext(const Candidate& candidate) {
+    if (!IsSettingsChoice(candidate)) return false;
+    return ContainsExactSegment(candidate.ancestors, L"autofightgroup") &&
+           ContainsExactSegment(candidate.ancestors, L"topicon");
+}
+
 inline bool IsAutoFightPanelProof(const Candidate& candidate) {
     return Key(candidate.name) == L"togglepickuptab" && InAutoFightUi(candidate);
 }
@@ -116,14 +122,38 @@ inline Selection SelectSettingsChoice(const std::vector<Candidate>& candidates) 
     return SelectByPredicate(candidates, IsSettingsChoice);
 }
 
-// Fast spatial tie-breaker used only when exact semantic label matching is
-// ambiguous. Unity screen coordinates are normalized to [0..1] with Y=0 at
-// the bottom, so an upper-screen menu choice has normalizedY >= upperYMin.
-// If position proof is unavailable or still ambiguous, remain fail-closed.
-inline Selection SelectSettingsChoiceSpatial(const std::vector<Candidate>& candidates,
-                                             float upperYMin = 0.55f) {
+// Cheapest duplicate-label tie-breaker. The live client exposes enough semantic
+// ancestry to distinguish the small AUTO menu from the always-visible bottom
+// settings icon: the correct choice is under AutoFightGroup/TopIcon/MainUI.
+// No screen/RectTransform reads are required on this path.
+inline Selection SelectSettingsChoiceContext(const std::vector<Candidate>& candidates) {
     const Selection semantic = SelectSettingsChoice(candidates);
     if (semantic.kind != SelectionKind::Ambiguous) return semantic;
+
+    Selection result{};
+    int count = 0;
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+        if (!IsAutoFightMenuSettingsContext(candidates[i])) continue;
+        ++count;
+        if (count == 1) {
+            result.kind = SelectionKind::Unique;
+            result.index = static_cast<int>(i);
+        } else {
+            result.kind = SelectionKind::Ambiguous;
+            result.index = -1;
+        }
+    }
+    return count == 0 ? semantic : result;
+}
+
+// Spatial fallback used only when exact semantic label matching AND the cheap
+// ancestor-context proof are still ambiguous. Unity screen coordinates are
+// normalized to [0..1] with Y=0 at the bottom. If position proof is unavailable
+// or still ambiguous, remain fail-closed.
+inline Selection SelectSettingsChoiceSpatial(const std::vector<Candidate>& candidates,
+                                             float upperYMin = 0.55f) {
+    const Selection context = SelectSettingsChoiceContext(candidates);
+    if (context.kind != SelectionKind::Ambiguous) return context;
 
     Selection result{};
     int count = 0;
@@ -140,7 +170,7 @@ inline Selection SelectSettingsChoiceSpatial(const std::vector<Candidate>& candi
             result.index = -1;
         }
     }
-    if (count == 0) return semantic;
+    if (count == 0) return context;
     return result;
 }
 
