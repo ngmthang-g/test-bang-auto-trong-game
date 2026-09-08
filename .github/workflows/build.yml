@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: One-shot apply bridge lifecycle fix
-        if: github.event_name == 'push' && github.event.head_commit.message == 'ci: apply bridge lifecycle fix via build'
+        if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'ci: apply bridge lifecycle fix via build' }}"
         shell: pwsh
         run: |
           python tools/apply_bridge_lifecycle_fix.py
