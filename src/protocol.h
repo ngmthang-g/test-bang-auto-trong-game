@@ -20,6 +20,8 @@ enum class Command : std::uint32_t {
     ProbePickupRuntime = 2,
     EnsurePickupOn = 3,
     ShutdownBridge = 4,
+    OpenAutoMenuSemantic = 5,
+    ChooseAutoSettingsSemantic = 6,
 };
 
 enum class ResultCode : std::int32_t {
