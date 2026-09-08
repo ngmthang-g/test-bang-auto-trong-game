@@ -8,7 +8,7 @@
 namespace autosettings_probe {
 
 constexpr std::uint32_t kMagic = 0x41535042u;
-constexpr std::uint32_t kProtocolVersion = 0x00010000u;
+constexpr std::uint32_t kProtocolVersion = 0x00010001u;
 constexpr UINT kWakeMessage = WM_APP + 0x5A3;
 constexpr wchar_t kMappingPrefix[] = L"Local\\ThanLongAutoSettings_";
 constexpr std::size_t kAutoSettingsCapacity = 8192;
@@ -19,6 +19,7 @@ enum class Command : std::uint32_t {
     ReadAutoSettings = 1,
     ProbePickupRuntime = 2,
     EnsurePickupOn = 3,
+    ShutdownBridge = 4,
 };
 
 enum class ResultCode : std::int32_t {
