@@ -28,17 +28,9 @@ jobs:
           Copy-Item build/Release/ThanLongAutoSettingsProbe.exe artifact/
           Copy-Item build/Release/ThanLongAutoSettingsBridge.dll artifact/
           Copy-Item README.md artifact/
-          New-Item -ItemType Directory -Force source-snapshot | Out-Null
-          Copy-Item src/bridge.cpp source-snapshot/bridge.cpp
       - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: ThanLongAutoSettingsProbe-v0.2-win-x64
           path: artifact/*
-          if-no-files-found: error
-      - name: Upload bridge source snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: bridge-source-snapshot
-          path: source-snapshot/bridge.cpp
           if-no-files-found: error
