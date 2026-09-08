@@ -58,6 +58,44 @@ int main() {
         CHECK(pickup_ui_logic::ScorePickupCandidate(c) == 0);
     }
 
+    // Live client reproduction 2026-09-08: navigation tab and the actual
+    // pickup checkbox were both classified as pickup candidates in v0.2.
+    {
+        std::vector<Candidate> candidates{
+            {L"TogPickUpEquipment", L"Nhặt vật phẩm", L"Text_-11993808/Nhặt vật phẩm/Image_-11993796",
+             L"Image_-11993756/TabPickUp/Image_-11990960/AutoFightUI", 0},
+            {L"TogglePickUpTab", L"Nhặt đồ", L"Text_-12003002/Nhặt đồ/Image_-12002990",
+             L"RectTransform_-12002928/Image_-11990960/AutoFightUI", 1},
+        };
+        const auto item = pickup_ui_logic::SelectPickupToggle(candidates);
+        CHECK(item.kind == SelectionKind::Unique);
+        CHECK(item.index == 0);
+
+        const auto tab = pickup_ui_logic::SelectPickupTab(candidates);
+        CHECK(tab.kind == SelectionKind::Unique);
+        CHECK(tab.index == 1);
+    }
+
+    // Fail closed: a generic "Nhặt đồ" toggle outside AutoFightUI is not the
+    // AUTO navigation tab.
+    {
+        std::vector<Candidate> candidates{
+            {L"TogglePickUpTab", L"Nhặt đồ", L"", L"SomeOtherPanel", 0},
+        };
+        const auto tab = pickup_ui_logic::SelectPickupTab(candidates);
+        CHECK(tab.kind == SelectionKind::None);
+    }
+
+    // The content checkbox must belong to TabPickUp unless its exact internal
+    // name is the live-proved TogPickUpEquipment control.
+    {
+        std::vector<Candidate> candidates{
+            {L"randomToggle", L"Nhặt vật phẩm", L"", L"OtherPanel", 0},
+        };
+        const auto item = pickup_ui_logic::SelectPickupToggle(candidates);
+        CHECK(item.kind == SelectionKind::None);
+    }
+
     if (failures != 0) {
         std::cerr << "pickup_ui_logic_tests: " << failures << " failure(s)\n";
         return 1;
