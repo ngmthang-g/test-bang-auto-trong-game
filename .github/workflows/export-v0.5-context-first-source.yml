@@ -1,0 +1,24 @@
+name: Export v0.5 Context First Source
+
+on:
+  push:
+    branches: [ 'ci/export-v0.5-context-first-source' ]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export exact feature source
+        run: git archive --format=zip --output=ThanLongAutoSettingsProbe-v0.5-context-first-source.zip 4b3150b0793c778d1c116fca8008c33fe330ac3a
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThanLongAutoSettingsProbe-v0.5-context-first-source
+          path: ThanLongAutoSettingsProbe-v0.5-context-first-source.zip
+          if-no-files-found: error
