@@ -31,6 +31,6 @@ jobs:
       - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ThanLongAutoSettingsProbe-v0.1-win-x64
+          name: ThanLongAutoSettingsProbe-v0.2-win-x64
           path: artifact/*
           if-no-files-found: error
