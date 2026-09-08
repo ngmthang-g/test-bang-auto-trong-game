@@ -68,11 +68,11 @@ int main() {
     }
 
     // Context tie-breaker must stay fail-closed if two exact-label candidates
-    // both appear to belong to the AUTO/top menu.
+    // both satisfy the same strong AutoFightGroup/TopIcon context proof.
     {
         std::vector<Candidate> candidates{
             {L"A", L"Thiết lập", L"", L"AutoFightGroup/TopIcon/MainUI"},
-            {L"B", L"Thiết lập", L"", L"Other/TopIcon/MainUI"},
+            {L"B", L"Thiết lập", L"", L"Other/AutoFightGroup/TopIcon/MainUI"},
         };
         const auto result = auto_menu_ui_logic::SelectSettingsChoiceContext(candidates);
         CHECK(result.kind == SelectionKind::Ambiguous);
