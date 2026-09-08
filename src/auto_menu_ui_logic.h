@@ -57,8 +57,20 @@ inline bool InAutoFightUi(const Candidate& candidate) {
     return Key(candidate.ancestors).find(L"autofightui") != std::wstring::npos;
 }
 
+inline bool ContainsExactSegment(const std::wstring& value, const wchar_t* key) {
+    std::size_t start = 0;
+    while (start <= value.size()) {
+        const std::size_t end = value.find(L'/', start);
+        const std::wstring segment = value.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+        if (Key(segment) == key) return true;
+        if (end == std::wstring::npos) break;
+        start = end + 1;
+    }
+    return false;
+}
+
 inline bool ExactLabel(const Candidate& candidate, const wchar_t* key) {
-    return Key(candidate.text) == key || Key(candidate.descendants) == key;
+    return Key(candidate.text) == key || ContainsExactSegment(candidate.descendants, key);
 }
 
 inline Selection SelectByPredicate(const std::vector<Candidate>& candidates,
