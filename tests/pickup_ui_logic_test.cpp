@@ -97,14 +97,50 @@ int main() {
         CHECK(item.kind == SelectionKind::None);
     }
 
-    // Match the donor InvokeControl UIToggle route exactly: no-op if already
-    // selected, otherwise prefer set_Selected(true) and only fall back to
-    // HandleSelectEvent(true) when the setter is unavailable.
+    // The same setter-first route applies to both the navigation tab and the
+    // live-proved TogPickUpEquipment checkbox. The previous bridge incorrectly
+    // forced HandleSelectEvent(true) for the checkbox even when set_Selected existed.
     CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(true, false, false, false) == TabMutationRoute::Noop);
     CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(false, false, true, true) == TabMutationRoute::Blocked);
     CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(false, true, true, true) == TabMutationRoute::SetSelected);
     CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(false, true, false, true) == TabMutationRoute::HandleSelectEvent);
     CHECK(pickup_ui_logic::ChoosePickupTabMutationRoute(false, true, false, false) == TabMutationRoute::Blocked);
+    CHECK(pickup_ui_logic::ChoosePickupItemMutationRoute(false, true, true, true) == TabMutationRoute::SetSelected);
+    CHECK(pickup_ui_logic::ChoosePickupItemMutationRoute(false, true, false, true) == TabMutationRoute::HandleSelectEvent);
+    CHECK(pickup_ui_logic::ChoosePickupItemMutationRoute(true, true, true, true) == TabMutationRoute::Noop);
+
+    // Saving is a separate proof step. Only the unique "Lưu thiết lập" button
+    // inside AutoFightUI is eligible; reset buttons and identical labels in other
+    // panels must not be invoked.
+    {
+        std::vector<Candidate> candidates{
+            {L"ButtonResetAuto", L"Cài đặt lại", L"Cài đặt lại", L"BottomBar/AutoFightUI", -1},
+            {L"ButtonSaveSettings", L"Lưu thiết lập", L"Lưu thiết lập", L"BottomBar/AutoFightUI", -1},
+            {L"ButtonSaveOther", L"Lưu thiết lập", L"Lưu thiết lập", L"SomeOtherPanel", -1},
+        };
+        const auto save = pickup_ui_logic::SelectSaveSettingsButton(candidates);
+        CHECK(save.kind == SelectionKind::Unique);
+        CHECK(save.index == 1);
+        CHECK(save.score > 0);
+    }
+
+    {
+        std::vector<Candidate> candidates{
+            {L"ButtonSaveA", L"Lưu thiết lập", L"", L"AutoFightUI", -1},
+            {L"ButtonSaveB", L"", L"Lưu thiết lập", L"AutoFightUI", -1},
+        };
+        const auto save = pickup_ui_logic::SelectSaveSettingsButton(candidates);
+        CHECK(save.kind == SelectionKind::Ambiguous);
+        CHECK(save.index == -1);
+    }
+
+    {
+        std::vector<Candidate> candidates{
+            {L"ButtonSaveOther", L"Lưu thiết lập", L"", L"OtherPanel", -1},
+        };
+        const auto save = pickup_ui_logic::SelectSaveSettingsButton(candidates);
+        CHECK(save.kind == SelectionKind::None);
+    }
 
     if (failures != 0) {
         std::cerr << "pickup_ui_logic_tests: " << failures << " failure(s)\n";
