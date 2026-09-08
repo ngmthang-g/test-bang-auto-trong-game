@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <stdlib.h>
 #include <cstdint>
 #include <cstddef>
 #include <cwchar>
