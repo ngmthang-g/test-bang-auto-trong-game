@@ -169,6 +169,15 @@ public:
     }
 
     void Close() {
+        // Ask the in-game bridge to release its named mapping before removing the
+        // Windows hook. Without this handshake, the remote DLL can keep
+        // Local\\ThanLongAutoSettings_<PID> alive and the next attach is mistaken
+        // for a second Probe instance.
+        if (block_ && hook_) {
+            Response ignored{};
+            std::wstring ignoredError;
+            (void)Send(Command::ShutdownBridge, ignored, ignoredError);
+        }
         if (hook_) { UnhookWindowsHookEx(hook_); hook_ = nullptr; }
         if (block_) { UnmapViewOfFile(block_); block_ = nullptr; }
         if (mapping_) { CloseHandle(mapping_); mapping_ = nullptr; }
@@ -189,7 +198,8 @@ private:
 BridgeSession g_session;
 
 void RefreshWindows() {
-    g_session.Close();
+    // Refreshing the window list is read-only discovery. Keep an already attached
+    // bridge session alive; Open() will close it only if the selected PID/TID changes.
     g_games.clear();
     SendMessageW(g_combo, CB_RESETCONTENT, 0, 0);
     EnumWindows(EnumGameWindowProc, 0);

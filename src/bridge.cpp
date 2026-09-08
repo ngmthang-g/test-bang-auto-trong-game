@@ -881,6 +881,8 @@ void ResetResponse(Response& response) {
     response.runtimePickupState = -1;
 }
 
+void CleanupMapping();
+
 void ProcessRequest() {
     if (!EnsureMapping() || !g_shared) return;
     const LONG seq = g_shared->requestSeq;
@@ -890,6 +892,19 @@ void ProcessRequest() {
     ResetResponse(g_shared->response);
     const Command command = static_cast<Command>(g_shared->request.command);
     ResultCode code = ResultCode::None;
+
+    if (command == Command::ShutdownBridge) {
+        g_shared->response.ok = 1;
+        g_shared->response.resultCode = static_cast<std::int32_t>(ResultCode::Ok);
+        SetText(g_shared->response.detail, kDetailCapacity, L"Bridge shutdown ACK; releasing mapping");
+        // Publish completion before unmapping. Controller owns a second mapping
+        // handle, so its view stays valid long enough to observe completedSeq.
+        InterlockedExchange(&g_shared->bridgeBusy, 0);
+        MemoryBarrier();
+        InterlockedExchange(&g_shared->completedSeq, seq);
+        CleanupMapping();
+        return;
+    }
 
     if (command == Command::ReadAutoSettings) {
         const bool ok = ReadAutoSettings(g_shared->response.autoSettings, kAutoSettingsCapacity,
