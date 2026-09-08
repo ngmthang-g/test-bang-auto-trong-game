@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ThanLongAutoSettingsProbe VERSION 0.1.0 LANGUAGES CXX)
+project(ThanLongAutoSettingsProbe VERSION 0.2.0 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "ThanLongAutoSettingsProbe is Windows-only")
@@ -32,13 +32,17 @@ add_executable(ui_logic_tests tests/ui_logic_test.cpp)
 target_include_directories(ui_logic_tests PRIVATE src)
 add_test(NAME ui_logic_tests COMMAND ui_logic_tests)
 
+add_executable(pickup_ui_logic_tests tests/pickup_ui_logic_test.cpp)
+target_include_directories(pickup_ui_logic_tests PRIVATE src)
+add_test(NAME pickup_ui_logic_tests COMMAND pickup_ui_logic_tests)
+
 add_executable(protocol_layout_tests tests/protocol_layout_test.cpp)
 target_include_directories(protocol_layout_tests PRIVATE src)
 target_compile_definitions(protocol_layout_tests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_test(NAME protocol_layout_tests COMMAND protocol_layout_tests)
 
 if(MSVC)
-    foreach(target ThanLongAutoSettingsBridge ThanLongAutoSettingsProbe auto_settings_parser_tests ui_logic_tests protocol_layout_tests)
+    foreach(target ThanLongAutoSettingsBridge ThanLongAutoSettingsProbe auto_settings_parser_tests ui_logic_tests pickup_ui_logic_tests protocol_layout_tests)
         target_compile_options(${target} PRIVATE /utf-8 /W4 /permissive- /EHsc)
     endforeach()
 endif()
