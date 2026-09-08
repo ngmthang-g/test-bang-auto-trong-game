@@ -9,6 +9,7 @@ int main() {
     CHECK(block.protocolVersion == autosettings_probe::kProtocolVersion);
     CHECK(block.response.runtimePickupState == -1);
     CHECK(autosettings_probe::kAutoSettingsCapacity == 8192);
+    CHECK(static_cast<std::uint32_t>(autosettings_probe::Command::ShutdownBridge) == 4u);
     if (failures != 0) {
         std::cerr << "protocol_layout_tests: " << failures << " failure(s)\n";
         return 1;
