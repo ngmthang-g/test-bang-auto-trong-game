@@ -241,6 +241,22 @@ std::wstring RenderDocument(const autosettings::Document& d) {
     return out;
 }
 
+void UpdatePersistedPickupProof(const Response& response) {
+    if (!response.autoSettings[0]) {
+        AppendLog(L"PERSISTED PICKITEM.IsOn = UNKNOWN (không có AutoSettings snapshot)");
+        return;
+    }
+    const autosettings::Document doc = autosettings::Parse(response.autoSettings);
+    g_lastVersionMatches = doc.versionMatches;
+    const autosettings::Group* pick = autosettings::FindGroup(doc, autosettings::GroupKind::PickItem);
+    if (!pick || pick->fields.empty()) {
+        AppendLog(L"PERSISTED PICKITEM.IsOn = UNKNOWN (không parse được PICKITEM)");
+        return;
+    }
+    AppendLog(L"PERSISTED PICKITEM.IsOn = " + autosettings::DisplayValue(pick->fields[0]) +
+              (doc.versionMatches ? L" [schema 4.1]" : L" [VERSION MISMATCH]"));
+}
+
 void UpdateRuntimeUi(const Response& response) {
     const std::wstring state = ui_logic::PickupStateText(response.runtimePickupState);
     SetWindowTextW(g_runtime, (L"Runtime Nhặt vật phẩm: " + state).c_str());
@@ -272,19 +288,21 @@ void DoProbe() {
     Response response{};
     std::wstring error;
     if (!g_session.Send(Command::ProbePickupRuntime, response, error)) { AppendLog(L"PROBE FAIL: " + error); return; }
+    UpdatePersistedPickupProof(response);
     UpdateRuntimeUi(response);
     AppendLog(L"RUNTIME PROBE: " + std::wstring(response.detail));
 }
 
 void DoEnsurePickup() {
     if (!IsWindowEnabled(g_enableButton)) {
-        AppendLog(L"ENSURE PICKUP bị khóa: chưa có runtime read-back proof");
+        AppendLog(L"ENSURE PICKUP bị khóa: chưa có runtime read-back proof UNIQUE/interactable/schema 4.1");
         return;
     }
     if (!EnsureSession()) return;
     Response response{};
     std::wstring error;
     if (!g_session.Send(Command::EnsurePickupOn, response, error)) { AppendLog(L"ENSURE FAIL: " + error); return; }
+    UpdatePersistedPickupProof(response);
     UpdateRuntimeUi(response);
     AppendLog(std::wstring(response.ok ? L"ENSURE PASS: " : L"ENSURE BLOCKED: ") + response.detail);
 }
@@ -368,7 +386,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     if (!RegisterClassExW(&wc)) return 1;
 
-    g_main = CreateWindowExW(0, kClassName, L"Thần Long - Auto Settings Probe v0.1",
+    g_main = CreateWindowExW(0, kClassName, L"Thần Long - Auto Settings Probe v0.2",
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 760,
         nullptr, nullptr, instance, nullptr);
     if (!g_main) return 2;
