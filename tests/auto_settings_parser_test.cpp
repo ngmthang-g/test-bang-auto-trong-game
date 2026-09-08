@@ -1,9 +1,11 @@
 #include "auto_settings_parser.h"
-#include <cassert>
 #include <iostream>
 #include <string>
 
 using autosettings::GroupKind;
+
+static int g_failures = 0;
+#define CHECK(expr) do { if (!(expr)) { std::cerr << "CHECK failed at line " << __LINE__ << ": " #expr "\n"; ++g_failures; } } while (0)
 
 static void TestFull41() {
     const std::wstring raw =
@@ -14,51 +16,55 @@ static void TestFull41() {
         L"#1|123|0|0|0|0|1|0|2|1|80|0|0|1|0|0"
         L"#1|1|0|0|406_407|1"
         L"#1|1|3|0|0|0|0|5|30|1|1|8|30|2|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0";
-    auto d = autosettings::Parse(raw);
-    assert(d.version == L"4.1");
-    assert(d.versionMatches);
-    assert(!d.groups.empty());
-    auto* pick = autosettings::FindGroup(d, GroupKind::PickItem);
-    assert(pick);
-    assert(pick->fields.size() >= 9);
-    assert(pick->fields[0].name == L"IsOn");
-    assert(pick->fields[0].raw == L"1");
-    assert(pick->fields[7].name == L"IsAutoDropItem");
-    assert(pick->fields[8].name == L"DropItemSettings");
-    assert(pick->fields[8].raw == L"drop_rules");
+    const auto d = autosettings::Parse(raw);
+    CHECK(d.version == L"4.1");
+    CHECK(d.versionMatches);
+    CHECK(!d.groups.empty());
+    const auto* pick = autosettings::FindGroup(d, GroupKind::PickItem);
+    CHECK(pick != nullptr);
+    if (!pick) return;
+    CHECK(pick->fields.size() >= 9);
+    if (pick->fields.size() < 9) return;
+    CHECK(pick->fields[0].name == L"IsOn");
+    CHECK(pick->fields[0].raw == L"1");
+    CHECK(pick->fields[7].name == L"IsAutoDropItem");
+    CHECK(pick->fields[8].name == L"DropItemSettings");
+    CHECK(pick->fields[8].raw == L"drop_rules");
 }
 
 static void TestBoolDisplay() {
     autosettings::Field f{L"Flag", L"1", autosettings::FieldType::Boolean};
-    assert(autosettings::DisplayValue(f) == L"ON");
+    CHECK(autosettings::DisplayValue(f) == L"ON");
     f.raw = L"0";
-    assert(autosettings::DisplayValue(f) == L"OFF");
+    CHECK(autosettings::DisplayValue(f) == L"OFF");
     f.raw = L"x";
-    assert(autosettings::DisplayValue(f) == L"x (BOOL?)");
+    CHECK(autosettings::DisplayValue(f) == L"x (BOOL?)");
 }
 
 static void TestTruncatedAndExtra() {
-    auto d = autosettings::Parse(L"4.1#1|2#1|500|0|x|0|0||0|rules|EXTRA");
-    assert(d.schemaMismatch);
-    auto* pick = autosettings::FindGroup(d, GroupKind::PickItem);
-    assert(pick);
-    assert(pick->extras.size() == 1);
-    assert(pick->extras[0] == L"EXTRA");
+    const auto d = autosettings::Parse(L"4.1#1|2#1|500|0|x|0|0||0|rules|EXTRA");
+    CHECK(d.schemaMismatch);
+    const auto* pick = autosettings::FindGroup(d, GroupKind::PickItem);
+    CHECK(pick != nullptr);
+    if (!pick) return;
+    CHECK(pick->extras.size() == 1);
+    if (!pick->extras.empty()) CHECK(pick->extras[0] == L"EXTRA");
 }
 
 static void TestVersionMismatch() {
-    auto d = autosettings::Parse(L"9.9#######");
-    assert(!d.versionMatches);
-    assert(d.schemaMismatch);
-    assert(d.raw == L"9.9#######");
+    const auto d = autosettings::Parse(L"9.9#######");
+    CHECK(!d.versionMatches);
+    CHECK(d.schemaMismatch);
+    CHECK(d.raw == L"9.9#######");
 }
 
 static void TestFubenScheduleBounds() {
-    auto d = autosettings::Parse(L"4.1#######0|0|0|0|0|0|0|0|0|0|1|8|30|A|1|9");
-    auto* f = autosettings::FindGroup(d, GroupKind::FuBen);
-    assert(f);
-    assert(f->fields.size() >= 10);
-    assert(d.schemaMismatch);
+    const auto d = autosettings::Parse(L"4.1#######0|0|0|0|0|0|0|0|0|0|1|8|30|A|1|9");
+    const auto* f = autosettings::FindGroup(d, GroupKind::FuBen);
+    CHECK(f != nullptr);
+    if (!f) return;
+    CHECK(f->fields.size() >= 10);
+    CHECK(d.schemaMismatch);
 }
 
 int main() {
@@ -67,6 +73,10 @@ int main() {
     TestTruncatedAndExtra();
     TestVersionMismatch();
     TestFubenScheduleBounds();
+    if (g_failures != 0) {
+        std::cerr << "auto_settings_parser_tests: " << g_failures << " failure(s)\n";
+        return 1;
+    }
     std::cout << "auto_settings_parser_tests: PASS\n";
     return 0;
 }
