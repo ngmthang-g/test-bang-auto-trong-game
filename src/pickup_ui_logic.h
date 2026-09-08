@@ -19,6 +19,13 @@ enum class SelectionKind {
     Ambiguous,
 };
 
+enum class TabMutationRoute {
+    Noop,
+    SetSelected,
+    HandleSelectEvent,
+    Blocked,
+};
+
 struct Selection {
     SelectionKind kind = SelectionKind::None;
     int index = -1;
@@ -150,6 +157,17 @@ inline Selection SelectPickupTab(const std::vector<Candidate>& candidates) {
     }
     if (positiveCount == 0) result = {};
     return result;
+}
+
+inline TabMutationRoute ChoosePickupTabMutationRoute(bool selected,
+                                                      bool interactable,
+                                                      bool hasSetSelected,
+                                                      bool hasSelectEvent) {
+    if (selected) return TabMutationRoute::Noop;
+    if (!interactable) return TabMutationRoute::Blocked;
+    if (hasSetSelected) return TabMutationRoute::SetSelected;
+    if (hasSelectEvent) return TabMutationRoute::HandleSelectEvent;
+    return TabMutationRoute::Blocked;
 }
 
 } // namespace pickup_ui_logic
