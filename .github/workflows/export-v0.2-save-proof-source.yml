@@ -1,0 +1,31 @@
+name: Export v0.2 Save Proof Source
+
+on:
+  push:
+    branches: [ 'ci/export-v0.2-save-proof-source' ]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9741c24dafe9c1738f00ff79ccff6840b81d2ab1
+          fetch-depth: 0
+      - name: Verify exact source commit
+        run: |
+          test "$(git rev-parse HEAD)" = "9741c24dafe9c1738f00ff79ccff6840b81d2ab1"
+      - name: Create exact source archive
+        run: |
+          git archive --format=zip --prefix=ThanLongAutoSettingsProbe-v0.2-Save-Proof-source/ \
+            --output=ThanLongAutoSettingsProbe-v0.2-Save-Proof-source.zip \
+            9741c24dafe9c1738f00ff79ccff6840b81d2ab1
+          sha256sum ThanLongAutoSettingsProbe-v0.2-Save-Proof-source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ThanLongAutoSettingsProbe-v0.2-Save-Proof-source
+          path: ThanLongAutoSettingsProbe-v0.2-Save-Proof-source.zip
+          if-no-files-found: error
