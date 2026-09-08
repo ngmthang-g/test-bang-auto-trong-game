@@ -19,6 +19,7 @@ constexpr int IDC_ENABLE = 1005;
 constexpr int IDC_RUNTIME = 1006;
 constexpr int IDC_OUTPUT = 1007;
 constexpr int IDC_LOG = 1008;
+constexpr int IDC_OPEN_AUTO_SETTINGS = 1009;
 
 struct GameWindow {
     HWND hwnd = nullptr;
@@ -35,6 +36,7 @@ HWND g_enableButton = nullptr;
 HWND g_runtime = nullptr;
 HWND g_output = nullptr;
 HWND g_log = nullptr;
+HWND g_openAutoSettingsButton = nullptr;
 std::vector<GameWindow> g_games;
 bool g_lastVersionMatches = false;
 
@@ -317,6 +319,28 @@ void DoEnsurePickup() {
     AppendLog(std::wstring(response.ok ? L"ENSURE PASS: " : L"ENSURE BLOCKED: ") + response.detail);
 }
 
+void DoOpenAutoSettingsSemantic() {
+    if (!EnsureSession()) return;
+    Response step1{};
+    std::wstring error;
+    if (!g_session.Send(Command::OpenAutoMenuSemantic, step1, error)) {
+        AppendLog(L"AUTO→THIẾT LẬP STEP1 FAIL: " + error);
+        return;
+    }
+    AppendLog(std::wstring(step1.ok ? L"AUTO→THIẾT LẬP STEP1 PASS: " : L"AUTO→THIẾT LẬP STEP1 BLOCKED: ") + step1.detail);
+    if (!step1.ok) return;
+
+    // Wait in the controller only. Never sleep inside the injected bridge/game thread.
+    Sleep(500);
+
+    Response step2{};
+    if (!g_session.Send(Command::ChooseAutoSettingsSemantic, step2, error)) {
+        AppendLog(L"AUTO→THIẾT LẬP STEP2 FAIL: " + error);
+        return;
+    }
+    AppendLog(std::wstring(step2.ok ? L"AUTO→THIẾT LẬP OPEN PASS: " : L"AUTO→THIẾT LẬP STEP2 BLOCKED: ") + step2.detail);
+}
+
 void Layout(HWND hwnd) {
     RECT r{};
     GetClientRect(hwnd, &r);
@@ -328,8 +352,9 @@ void Layout(HWND hwnd) {
     MoveWindow(g_probeButton, 12, 48, 180, 28, TRUE);
     MoveWindow(g_enableButton, 200, 48, 210, 28, TRUE);
     MoveWindow(g_runtime, 430, 52, w - 442, 24, TRUE);
+    MoveWindow(g_openAutoSettingsButton, 12, 80, 270, 28, TRUE);
     const int logH = 130;
-    MoveWindow(g_output, 12, 84, w - 24, h - 84 - logH - 20, TRUE);
+    MoveWindow(g_output, 12, 116, w - 24, h - 116 - logH - 20, TRUE);
     MoveWindow(g_log, 12, h - logH - 8, w - 24, logH, TRUE);
 }
 
@@ -347,6 +372,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                           0,0,0,0, hwnd, reinterpret_cast<HMENU>(IDC_PROBE), nullptr, nullptr);
             g_enableButton = CreateWindowW(L"BUTTON", L"BẬT NHẶT VẬT PHẨM", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                            0,0,0,0, hwnd, reinterpret_cast<HMENU>(IDC_ENABLE), nullptr, nullptr);
+            g_openAutoSettingsButton = CreateWindowW(L"BUTTON", L"TEST AUTO → THIẾT LẬP", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                                           0,0,0,0, hwnd, reinterpret_cast<HMENU>(IDC_OPEN_AUTO_SETTINGS), nullptr, nullptr);
             g_runtime = CreateWindowW(L"STATIC", L"Runtime Nhặt vật phẩm: CHƯA XÁC ĐỊNH", WS_CHILD | WS_VISIBLE,
                                       0,0,0,0, hwnd, reinterpret_cast<HMENU>(IDC_RUNTIME), nullptr, nullptr);
             g_output = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
@@ -367,6 +394,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             else if (id == IDC_READ && HIWORD(wParam) == BN_CLICKED) DoReadAll();
             else if (id == IDC_PROBE && HIWORD(wParam) == BN_CLICKED) DoProbe();
             else if (id == IDC_ENABLE && HIWORD(wParam) == BN_CLICKED) DoEnsurePickup();
+            else if (id == IDC_OPEN_AUTO_SETTINGS && HIWORD(wParam) == BN_CLICKED) DoOpenAutoSettingsSemantic();
             else if (id == IDC_GAME && HIWORD(wParam) == CBN_SELCHANGE) {
                 g_session.Close();
                 g_lastVersionMatches = false;
@@ -396,7 +424,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     if (!RegisterClassExW(&wc)) return 1;
 
-    g_main = CreateWindowExW(0, kClassName, L"Thần Long - Auto Settings Probe v0.2",
+    g_main = CreateWindowExW(0, kClassName, L"Thần Long - Auto Settings Probe v0.3 Semantic Open",
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1020, 760,
         nullptr, nullptr, instance, nullptr);
     if (!g_main) return 2;
