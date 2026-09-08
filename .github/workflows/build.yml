@@ -28,10 +28,10 @@ jobs:
           Copy-Item build/Release/ThanLongAutoSettingsProbe.exe artifact/
           Copy-Item build/Release/ThanLongAutoSettingsBridge.dll artifact/
           Copy-Item README.md artifact/
-          Copy-Item docs/HUONG_DAN_SEMANTIC_AUTO_THIET_LAP_NHAT_DO_v0.4.md artifact/
+          Copy-Item docs/HUONG_DAN_SEMANTIC_AUTO_THIET_LAP_NHAT_DO_v0.5_CONTEXT_FIRST.md artifact/
       - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ThanLongAutoSettingsProbe-v0.4-upper-region-win-x64
+          name: ThanLongAutoSettingsProbe-v0.5-context-first-win-x64
           path: artifact/*
           if-no-files-found: error
