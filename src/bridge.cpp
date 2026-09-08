@@ -1,4 +1,4 @@
-#include <windows.h>
+﻿#include <windows.h>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -993,9 +993,11 @@ bool SelectSettingsSemanticControlSinglePass(std::vector<SettingsSemanticMatch>&
     candidates.reserve(matches.size());
     for (const auto& match : matches) candidates.push_back(match.candidate);
 
-    auto selection = auto_menu_ui_logic::SelectSettingsChoice(candidates);
+    auto selection = auto_menu_ui_logic::SelectSettingsChoiceContext(candidates);
     if (selection.kind == auto_menu_ui_logic::SelectionKind::Ambiguous) {
-        // Only duplicate exact-label candidates pay the RectTransform/Screen cost.
+        // Ancestor context is the cheapest proof. Only if that is still
+        // ambiguous do duplicate exact-label candidates pay the
+        // RectTransform/Screen fallback cost.
         for (std::size_t i = 0; i < matches.size(); ++i) {
             float nx = 0.0f;
             float ny = 0.0f;
@@ -1217,7 +1219,7 @@ bool ChooseAutoSettingsSemantic(Response& response, wchar_t* detail, std::size_t
     if (settingsKind != auto_menu_ui_logic::SelectionKind::Unique || settingsIndex < 0 ||
         static_cast<std::size_t>(settingsIndex) >= matches.size()) {
         SetText(detail, cap, settingsKind == auto_menu_ui_logic::SelectionKind::Ambiguous
-            ? L"AUTO STEP2 BLOCKED: nhiều 'Thiết lập'; upper-region tie-break chưa UNIQUE"
+            ? L"AUTO STEP2 BLOCKED: nhiều 'Thiết lập'; AutoFightGroup/TopIcon context + position fallback chưa UNIQUE"
             : L"AUTO STEP2 BLOCKED: menu AUTO đã mở nhưng chưa tìm thấy 'Thiết lập'");
         for (const auto& match : matches) AppendSettingsMatchDiagnostic(detail, cap, match);
         return true;
