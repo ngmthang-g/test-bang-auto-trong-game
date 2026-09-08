@@ -42,3 +42,4 @@ s = replace_once(
 p.write_text(s, encoding="utf-8")
 
 print("bridge lifecycle patch applied")
+# one-shot trigger marker
