@@ -53,6 +53,39 @@ int main() {
         CHECK(result.index == 1);
     }
 
+    // Regression from live client: two independent active controls can both have
+    // exact label "Thiết lập". The AUTO-menu choice is in the upper region while
+    // the always-visible interface/settings icon is near the bottom. Only when
+    // label matching is ambiguous do we use normalized position as a tie-breaker.
+    {
+        std::vector<Candidate> candidates{
+            {L"BtnAutoSetting", L"Thiết lập", L"", L"AutoMenu"},
+            {L"BtnInterfaceSetting", L"Thiết lập", L"", L"MainUI/BottomRight"},
+        };
+        candidates[0].hasNormalizedPosition = true;
+        candidates[0].normalizedX = 0.51f;
+        candidates[0].normalizedY = 0.82f;
+        candidates[1].hasNormalizedPosition = true;
+        candidates[1].normalizedX = 0.93f;
+        candidates[1].normalizedY = 0.08f;
+
+        const auto result = auto_menu_ui_logic::SelectSettingsChoiceSpatial(candidates, 0.55f);
+        CHECK(result.kind == SelectionKind::Unique);
+        CHECK(result.index == 0);
+    }
+
+    // If two duplicate labels exist but neither has a proven normalized position,
+    // remain fail-closed rather than guessing.
+    {
+        std::vector<Candidate> candidates{
+            {L"BtnAutoSetting", L"Thiết lập", L"", L"AutoMenu"},
+            {L"BtnInterfaceSetting", L"Thiết lập", L"", L"MainUI/BottomRight"},
+        };
+        const auto result = auto_menu_ui_logic::SelectSettingsChoiceSpatial(candidates, 0.55f);
+        CHECK(result.kind == SelectionKind::Ambiguous);
+        CHECK(result.index == -1);
+    }
+
     // Once AutoFightUI is already open, its own labels are not menu-choice candidates.
     {
         std::vector<Candidate> candidates{
